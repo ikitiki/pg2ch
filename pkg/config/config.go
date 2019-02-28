@@ -42,16 +42,18 @@ type Column struct {
 type ColumnMapping []map[string]Column
 
 type Table struct {
-	Columns                ColumnMapping `yaml:"columns"`
-	SignColumn             string        `yaml:"sign_column"`
-	BufferRowIdColumn      string        `yaml:"buffer_row_id"`
-	BufferTable            string        `yaml:"buffer_table"`
-	BufferSize             int           `yaml:"buffer_size"`
-	MainTable              string        `yaml:"main_table"`
-	VerColumn              string        `yaml:"ver_column"`
-	Engine                 TableEngine   `yaml:"engine"`
-	MergeThreshold         int           `yaml:"merge_treshold"`
-	InactivityMergeTimeout time.Duration `yaml:"inactivity_merge_timeout"`
+	Columns                 ColumnMapping `yaml:"columns"`
+	SignColumn              string        `yaml:"sign_column"`
+	BufferRowIdColumn       string        `yaml:"buffer_row_id"`
+	BufferTable             string        `yaml:"buffer_table"`
+	BufferSize              int           `yaml:"buffer_size"`
+	MainTable               string        `yaml:"main_table"`
+	VerColumn               string        `yaml:"ver_column"`
+	Engine                  TableEngine   `yaml:"engine"`
+	MergeThreshold          int           `yaml:"merge_treshold"`
+	InactivityMergeTimeout  time.Duration `yaml:"inactivity_merge_timeout"`
+	SkipInitSync            bool          `yaml:"skip_init_sync"`
+	InitSyncSkipBufferTable bool          `yaml:"init_sync_skip_buffer_table"`
 }
 
 type Config struct {

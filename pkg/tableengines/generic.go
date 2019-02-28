@@ -59,8 +59,10 @@ type genericTable struct {
 	bufferMutex sync.Mutex
 	inTx        *atomic.Value
 
-	syncBuf *bytes.Buffer
-	syncCSV *csv.Reader
+	syncSkip            bool
+	syncSkipBufferTable bool
+	syncBuf             *bytes.Buffer
+	syncCSV             *csv.Reader
 }
 
 func newGenericTable(conn *sql.DB, name string, tblCfg config.Table) genericTable {
@@ -94,24 +96,26 @@ func newGenericTable(conn *sql.DB, name string, tblCfg config.Table) genericTabl
 	}
 
 	t := genericTable{
-		stopCh:               make(chan struct{}),
-		chConn:               conn,
-		pgTableName:          name,
-		mainTable:            tblCfg.MainTable,
-		bufferTable:          tblCfg.BufferTable,
-		pg2ch:                pgChColumns,
-		chTypes:              pgChTypes,
-		chColumns:            chColumns,
-		pgColumns:            pgColumns,
-		emptyValues:          emptyValues,
-		bufferSize:           tblCfg.BufferSize,
-		mergeBufferThreshold: tblCfg.MergeThreshold,
-		bufferMutex:          sync.Mutex{},
-		inTx:                 &atomic.Value{},
+		stopCh:                 make(chan struct{}),
+		chConn:                 conn,
+		pgTableName:            name,
+		mainTable:              tblCfg.MainTable,
+		bufferTable:            tblCfg.BufferTable,
+		pg2ch:                  pgChColumns,
+		chTypes:                pgChTypes,
+		chColumns:              chColumns,
+		pgColumns:              pgColumns,
+		emptyValues:            emptyValues,
+		bufferSize:             tblCfg.BufferSize,
+		mergeBufferThreshold:   tblCfg.MergeThreshold,
+		bufferMutex:            sync.Mutex{},
+		inTx:                   &atomic.Value{},
 		mergeInactivityTimeout: tblCfg.InactivityMergeTimeout,
 		bufferRowIdColumn:      tblCfg.BufferRowIdColumn,
 		syncBuf:                syncBuf,
 		syncCSV:                csv.NewReader(syncBuf),
+		syncSkip:               tblCfg.SkipInitSync,
+		syncSkipBufferTable:    tblCfg.InitSyncSkipBufferTable,
 	}
 
 	if t.mergeInactivityTimeout.Seconds() == 0 {
@@ -139,14 +143,14 @@ func (t *genericTable) truncateBufTable() error {
 	return nil
 }
 
-func (t *genericTable) stmntPrepare() error {
+func (t *genericTable) stmntPrepare(sync bool) error {
 	var (
 		tableName string
 		err       error
 	)
 
 	columns := t.chColumns
-	if t.bufferTable != "" {
+	if t.bufferTable != "" && ((sync && !t.syncSkipBufferTable) || !sync) {
 		tableName = t.bufferTable
 		columns = append(columns, t.bufferRowIdColumn)
 	} else {
@@ -193,6 +197,10 @@ func (t *genericTable) fetchCSVRecord(p []byte) (rec []string, n int, err error)
 }
 
 func (t *genericTable) genSync(pgTx *pgx.Tx, w io.Writer) error {
+	if t.syncSkip {
+		return nil
+	}
+
 	query := fmt.Sprintf("copy %s(%s) to stdout (format csv)", t.pgTableName, strings.Join(t.pgColumns, ", "))
 
 	t.inTx.Store(true)
@@ -206,13 +214,13 @@ func (t *genericTable) genSync(pgTx *pgx.Tx, w io.Writer) error {
 		return fmt.Errorf("could not truncate main table: %v", err)
 	}
 
-	if t.bufferTable != "" {
+	if t.bufferTable != "" && !t.syncSkipBufferTable {
 		if err := t.truncateBufTable(); err != nil {
 			return fmt.Errorf("could not truncate buffer table: %v", err)
 		}
 	}
 
-	if err := t.stmntPrepare(); err != nil {
+	if err := t.stmntPrepare(true); err != nil {
 		return fmt.Errorf("could not prepare: %v", err)
 	}
 
@@ -312,7 +320,7 @@ func (t *genericTable) flushBuffer() error {
 		return err
 	}
 
-	if err := t.stmntPrepare(); err != nil {
+	if err := t.stmntPrepare(false); err != nil {
 		return err
 	}
 
