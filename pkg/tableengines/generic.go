@@ -210,13 +210,15 @@ func (t *genericTable) genSync(pgTx *pgx.Tx, w io.Writer) error {
 		return fmt.Errorf("could not begin: %v", err)
 	}
 
-	if err := t.truncateMainTable(); err != nil {
-		return fmt.Errorf("could not truncate main table: %v", err)
-	}
-
 	if t.bufferTable != "" && !t.syncSkipBufferTable {
 		if err := t.truncateBufTable(); err != nil {
 			return fmt.Errorf("could not truncate buffer table: %v", err)
+		}
+	}
+
+	if !t.syncSkipBufferTable {
+		if err := t.truncateMainTable(); err != nil {
+			return fmt.Errorf("could not truncate main table: %v", err)
 		}
 	}
 
@@ -237,6 +239,12 @@ func (t *genericTable) genSync(pgTx *pgx.Tx, w io.Writer) error {
 
 	if t.bufferTable == "" {
 		return nil
+	}
+
+	if t.syncSkipBufferTable {
+		if err := t.truncateMainTable(); err != nil {
+			return fmt.Errorf("could not truncate main table: %v", err)
+		}
 	}
 
 	if err := t.merge(); err != nil {
