@@ -43,7 +43,7 @@ type genericTable struct {
 	chColumns         []string
 	pgColumns         []string
 	pg2ch             map[string]string
-	chTypes           map[string]string
+	columns           map[string]config.Column
 	bufferRowIdColumn string
 	emptyValues       map[int]interface{}
 
@@ -68,7 +68,7 @@ type genericTable struct {
 func newGenericTable(conn *sql.DB, name string, tblCfg config.Table) genericTable {
 	syncBuf := bytes.NewBuffer(nil)
 	pgChColumns := make(map[string]string)
-	pgChTypes := make(map[string]string)
+	columns := make(map[string]config.Column)
 
 	pgColumns := make([]string, len(tblCfg.Columns))
 	chColumns := make([]string, 0)
@@ -78,7 +78,7 @@ func newGenericTable(conn *sql.DB, name string, tblCfg config.Table) genericTabl
 			pgColumns[colId] = pgName
 
 			if chProps.EmptyValue != nil {
-				val, err := convert(*chProps.EmptyValue, chProps.ChType)
+				val, err := convert(*chProps.EmptyValue, chProps)
 				if err != nil {
 					log.Fatalf("wrong value for %q empty value: %v", pgName, err)
 				}
@@ -90,7 +90,7 @@ func newGenericTable(conn *sql.DB, name string, tblCfg config.Table) genericTabl
 			}
 
 			pgChColumns[pgName] = chProps.ChName
-			pgChTypes[pgName] = chProps.ChType
+			columns[pgName] = chProps
 			chColumns = append(chColumns, chProps.ChName)
 		}
 	}
@@ -102,7 +102,7 @@ func newGenericTable(conn *sql.DB, name string, tblCfg config.Table) genericTabl
 		mainTable:              tblCfg.MainTable,
 		bufferTable:            tblCfg.BufferTable,
 		pg2ch:                  pgChColumns,
-		chTypes:                pgChTypes,
+		columns:                columns,
 		chColumns:              chColumns,
 		pgColumns:              pgColumns,
 		emptyValues:            emptyValues,
@@ -376,16 +376,16 @@ func (t *genericTable) merge() error {
 	return nil
 }
 
-func convert(val string, valType string) (interface{}, error) {
+func convert(val string, column config.Column) (interface{}, error) {
 	// TODO: mind nullable values
 
 	// hint: copy (select ''::text, null::text) to stdout (format csv);
 	// output: "",
-	if val == "" {
+	if val == "" && column.Nullable {
 		return nil, nil
 	}
 
-	switch valType {
+	switch column.ChType {
 	case "Int8":
 		return strconv.ParseInt(val, 10, 8)
 	case "Int16":
@@ -418,7 +418,7 @@ func convert(val string, valType string) (interface{}, error) {
 		return time.Parse("2006-01-02 15:04:05", val[:19])
 	}
 
-	return nil, fmt.Errorf("unknown type: %v", valType)
+	return nil, fmt.Errorf("unknown type: %v", column.ChType)
 }
 
 func (t *genericTable) convertTuples(row message.Row) []interface{} {
@@ -434,7 +434,7 @@ func (t *genericTable) convertTuples(row message.Row) []interface{} {
 			continue
 		}
 
-		val, err := convert(string(col.Value), t.chTypes[colName])
+		val, err := convert(string(col.Value), t.columns[colName])
 		if err != nil {
 			panic(err)
 		}
@@ -450,9 +450,9 @@ func (t *genericTable) convertStrings(tuples []string) ([]interface{}, error) {
 	for i, tuple := range tuples {
 		colName := t.pgColumns[i]
 
-		val, err := convert(tuple, t.chTypes[colName])
+		val, err := convert(tuple, t.columns[colName])
 		if err != nil {
-			return nil, fmt.Errorf("could not parse %q field with %s type: %v", colName, t.chTypes[colName], err)
+			return nil, fmt.Errorf("could not parse %q field with %s type: %v", colName, t.columns[colName].ChType, err)
 		}
 
 		res = append(res, val)

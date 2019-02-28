@@ -37,6 +37,7 @@ type Column struct {
 	ChName     string  `yaml:"name"`
 	ChType     string  `yaml:"type"`
 	EmptyValue *string `yaml:"empty_value"`
+	Nullable   bool    `yaml:"nullable"`
 }
 
 type ColumnMapping []map[string]Column
