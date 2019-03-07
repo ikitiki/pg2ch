@@ -408,6 +408,8 @@ func (t *genericTable) convertStrings(fields []sql.NullString) ([]interface{}, e
 }
 
 func (t *genericTable) Truncate() error {
+	t.bufferCmdId = 0
+
 	if err := t.truncateMainTable(); err != nil {
 		return err
 	}
