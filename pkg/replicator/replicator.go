@@ -397,7 +397,6 @@ func (r *Replicator) maybeMergeTables() error {
 		if err := r.tables[tblName].FlushToMainTable(); err != nil {
 			return fmt.Errorf("could not commit %q table: %v", tblName, err)
 		}
-		log.Printf("table %s merged", tblName)
 	}
 
 	r.mergeIsNeeded = false
