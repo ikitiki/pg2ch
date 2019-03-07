@@ -249,6 +249,10 @@ func (t *genericTable) processCommandSet(set commandSet) (bool, error) {
 		}
 	}
 
+	if t.bufferTable == "" {
+		return false, nil
+	}
+
 	return t.bufferFlushCnt >= t.mergeBufferThreshold, nil
 }
 
@@ -293,6 +297,9 @@ func (t *genericTable) FlushToMainTable() error {
 		return fmt.Errorf("could not flush buffers: %v", err)
 	}
 
+	if t.bufferTable == "" {
+		return nil
+	}
 	for _, query := range t.mergeQueries {
 		if _, err := t.chConn.Exec(query); err != nil {
 			return err

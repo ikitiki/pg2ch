@@ -183,8 +183,7 @@ func (r *Replicator) Run() error {
 	}
 
 	go r.logErrCh()
-
-	go r.InactivityMerge()
+	go r.inactivityMerge()
 
 	r.waitForShutdown()
 	r.cancel()
@@ -199,7 +198,7 @@ func (r *Replicator) Run() error {
 	return nil
 }
 
-func (r *Replicator) InactivityMerge() {
+func (r *Replicator) inactivityMerge() {
 	ticker := time.NewTicker(r.cfg.InactivityMergeTimeout)
 
 	for {
@@ -380,10 +379,6 @@ func (r *Replicator) getTable(oid utils.OID) ClickHouseTable {
 	tbl, ok := r.tables[tblName]
 	if !ok {
 		return nil
-	}
-
-	if r.cfg.Tables[tblName].BufferTable == "" {
-		return tbl
 	}
 
 	if _, ok := r.txTables[tblName]; !ok {
