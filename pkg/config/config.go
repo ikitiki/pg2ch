@@ -14,6 +14,8 @@ import (
 const (
 	defaultInactivityMergeTimeout = time.Minute
 	publicSchema                  = "public"
+	defaultClickHousePort         = 9000
+	defaultClickHouseHost         = "127.0.0.1"
 )
 
 type tableEngine int
@@ -188,6 +190,14 @@ func New(filepath string) (*Config, error) {
 	}
 
 	cfg.Postgres.ConnConfig = cfg.Postgres.ConnConfig.Merge(connCfg)
+
+	if cfg.ClickHouse.Port == 0 {
+		cfg.ClickHouse.Port = defaultClickHousePort
+	}
+
+	if cfg.ClickHouse.Host == "" {
+		cfg.ClickHouse.Host = defaultClickHouseHost
+	}
 
 	return &cfg, nil
 }

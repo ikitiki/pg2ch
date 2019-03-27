@@ -155,7 +155,7 @@ func (r *Replicator) createReplSlotAndInitTables(tx *pgx.Tx) error {
 
 	for tblName, tbl := range r.tables {
 		if err := tbl.Sync(tx); err != nil {
-			return fmt.Errorf("could not sync %q: %v", tblName, err)
+			return fmt.Errorf("could not sync %s: %v", tblName.String(), err)
 		}
 	}
 
@@ -303,7 +303,7 @@ func (r *Replicator) Run() error {
 
 	for tblName, tbl := range r.tables {
 		if err := tbl.Init(); err != nil {
-			fmt.Printf("could not init %s: %v", tblName, err)
+			fmt.Printf("could not init %s: %v", tblName.String(), err)
 		}
 	}
 
@@ -322,7 +322,7 @@ func (r *Replicator) Run() error {
 
 	for tblName, tbl := range r.tables {
 		if err := tbl.FlushToMainTable(); err != nil {
-			log.Printf("could not flush %s to main table: %v", tblName, err)
+			log.Printf("could not flush %s to main table: %v", tblName.String(), err)
 		}
 	}
 
@@ -533,7 +533,7 @@ func (r *Replicator) mergeTables() error {
 		}
 
 		if err := r.tables[tblName].FlushToMainTable(); err != nil {
-			return fmt.Errorf("could not commit %q table: %v", tblName, err)
+			return fmt.Errorf("could not commit %s table: %v", tblName.String(), err)
 		}
 
 		delete(r.tablesToMerge, tblName)
@@ -632,7 +632,7 @@ func (r *Replicator) tableConfig(tx *pgx.Tx, tblName config.NamespacedName) (con
 
 	cfg.PgColumns, err = r.tablePgColumns(tx, tblName)
 	if err != nil {
-		return cfg, fmt.Errorf("could not get columns for %q postgres table: %v", tblName, err)
+		return cfg, fmt.Errorf("could not get columns for %s postgres table: %v", tblName.String(), err)
 	}
 
 	chColumns, err := r.tableChColumns(cfg.MainTable)

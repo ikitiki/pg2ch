@@ -195,7 +195,7 @@ func (t *genericTable) genSync(pgTx *pgx.Tx, w io.Writer) error {
 		return fmt.Errorf("could not prepare: %v", err)
 	}
 
-	if err := pgTx.CopyToWriter(w, query); err != nil {
+	if _, err := pgTx.CopyToWriter(w, query); err != nil {
 		return fmt.Errorf("could not copy: %v", err)
 	}
 
