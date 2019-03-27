@@ -28,7 +28,8 @@ tables:
         engine: {clickhouse table engine: MergeTree, ReplacingMergeTree or CollapsingMergeTree}
         buffer_size: {number of DML(insert/update/delete) commands to store in the memory before flushing to the buffer/main table } 
         merge_threshold: {if buffer table specified, number of buffer flushed before moving data from buffer to the main table}
-        columns: # in the exact same order as in the postgresql table
+        columns: # postgres - clickhouse column name mapping, 
+                 # if not present, all the columns are expected to be on the clickhouse side with the exact same names 
             {postgresql column name}: {clickhouse column name}
         empty_values: # in case of ReplacingMergeTree those values will be used to discard deleted rows
             {clickhouse column name}: {value to be used}
