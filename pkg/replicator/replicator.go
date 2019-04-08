@@ -48,8 +48,9 @@ type Replicator struct {
 	oidName      map[utils.OID]config.PgTableName
 	tempSlotName string
 
-	finalLSN utils.LSN
-	tableLSN map[config.PgTableName]utils.LSN
+	finalLSN        utils.LSN
+	tableLSN        map[config.PgTableName]utils.LSN
+	saveStateNeeded bool
 
 	tablesToMergeMutex *sync.Mutex
 	tablesToMerge      map[config.PgTableName]struct{} // tables to be merged
@@ -151,6 +152,7 @@ func (r *Replicator) createReplSlotAndInitTables(tx *pgx.Tx) error {
 			return fmt.Errorf("could not sync %s: %v", tblName.String(), err)
 		}
 		r.tableLSN[tblName] = lsn
+		r.saveStateNeeded = true
 	}
 
 	if err := r.pgDropRepSlot(tx); err != nil {
@@ -211,6 +213,10 @@ func (r *Replicator) getCurrentState() error {
 }
 
 func (r *Replicator) saveCurrentState() error {
+	if !r.saveStateNeeded {
+		return nil
+	}
+
 	buf := bytes.NewBuffer(nil)
 
 	if err := yaml.NewEncoder(buf).Encode(state{Tables: r.tableLSN}); err != nil {
@@ -232,6 +238,7 @@ func (r *Replicator) saveCurrentState() error {
 	if err := utils.SyncFileAndDirectory(r.stateLSNfp); err != nil {
 		return fmt.Errorf("could not sync state file %q: %v", r.cfg.LsnStateFilepath, err)
 	}
+	r.saveStateNeeded = false
 
 	return nil
 }
@@ -561,6 +568,7 @@ func (r *Replicator) getTable(oid utils.OID) (config.PgTableName, clickHouseTabl
 }
 
 func (r *Replicator) mergeTables() error {
+	r.saveStateNeeded = r.saveStateNeeded || len(r.tablesToMerge) > 0
 	for tblName := range r.tablesToMerge {
 		if _, ok := r.inTxTables[tblName]; ok {
 			continue
