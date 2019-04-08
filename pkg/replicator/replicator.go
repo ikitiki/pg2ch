@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -62,8 +61,6 @@ type Replicator struct {
 type state struct {
 	Tables map[config.PgTableName]utils.LSN `yaml:"tables"`
 }
-
-var errNoStateFile = errors.New("no state file")
 
 func New(cfg config.Config) *Replicator {
 	r := Replicator{
@@ -146,6 +143,10 @@ func (r *Replicator) createReplSlotAndInitTables(tx *pgx.Tx) error {
 	}
 
 	for tblName, tbl := range r.tables {
+		if _, ok := r.tableLSN[tblName]; ok {
+			continue
+		}
+
 		if err := tbl.Sync(tx); err != nil {
 			return fmt.Errorf("could not sync %s: %v", tblName.String(), err)
 		}
@@ -187,25 +188,23 @@ func (r *Replicator) getCurrentState() error {
 			return fmt.Errorf("could not create file: %v", err)
 		}
 
-		return errNoStateFile
+		return nil
 	}
 
 	if stat, err := r.stateLSNfp.Stat(); err != nil {
 		return fmt.Errorf("could not get file stats: %v", err)
 	} else if stat.Size() == 0 {
-		return errNoStateFile
+		return nil
 	}
 
 	if err := yaml.NewDecoder(r.stateLSNfp).Decode(&s); err != nil {
 		log.Printf("could not decode state yaml: %v", err)
-		return errNoStateFile
+		return nil
 	}
 
-	if len(s.Tables) == 0 {
-		return errNoStateFile
+	if len(s.Tables) != 0 {
+		r.tableLSN = s.Tables
 	}
-
-	r.tableLSN = s.Tables
 
 	return nil
 }
@@ -289,15 +288,26 @@ func (r *Replicator) Run() error {
 		return err
 	}
 
-	if err := r.getCurrentState(); err == errNoStateFile { // sync is needed
+	if err := r.getCurrentState(); err != nil {
+		return fmt.Errorf("could not get start lsn positions: %v", err)
+	}
+
+	syncNeeded := false
+	for tblName := range r.cfg.Tables {
+		if _, ok := r.tableLSN[tblName]; !ok {
+			log.Printf("table not found %s", tblName)
+			syncNeeded = true
+			break
+		}
+	}
+
+	if syncNeeded {
 		if err := r.createReplSlotAndInitTables(tx); err != nil {
 			return fmt.Errorf("could not sync tables: %v", err)
 		}
 		if err := r.saveCurrentState(); err != nil {
 			return fmt.Errorf("could not init state file: %v", err)
 		}
-	} else if err != nil {
-		return fmt.Errorf("could not get start LSN: %v", err)
 	} else if err := r.initTables(tx); err != nil {
 		return fmt.Errorf("could not init tables: %v", err)
 	}
