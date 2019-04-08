@@ -168,6 +168,10 @@ func (tn *PgTableName) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return nil
 }
 
+func (tn PgTableName) MarshalYAML() (interface{}, error) {
+	return tn.String(), nil
+}
+
 func (tn *PgTableName) String() string {
 	if tn.SchemaName == publicSchema {
 		return fmt.Sprintf("%q", tn.TableName)
