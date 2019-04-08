@@ -150,6 +150,7 @@ func (r *Replicator) createReplSlotAndInitTables(tx *pgx.Tx) error {
 		if err := tbl.Sync(tx); err != nil {
 			return fmt.Errorf("could not sync %s: %v", tblName.String(), err)
 		}
+		r.tableLSN[tblName] = lsn
 	}
 
 	if err := r.pgDropRepSlot(tx); err != nil {
@@ -295,7 +296,6 @@ func (r *Replicator) Run() error {
 	syncNeeded := false
 	for tblName := range r.cfg.Tables {
 		if _, ok := r.tableLSN[tblName]; !ok {
-			log.Printf("table not found %s", tblName)
 			syncNeeded = true
 			break
 		}
