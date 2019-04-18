@@ -156,7 +156,9 @@ func (t *genericTable) begin() (err error) {
 
 func (t *genericTable) pgStatLiveTuples(pgTx *pgx.Tx) (int64, error) {
 	var rows sql.NullInt64
-	err := pgTx.QueryRow("select pg_stat_get_live_tuples(%s::regclass)", t.cfg.PgTableName.String()).Scan(&rows)
+	err := pgTx.QueryRow("select n_live_tup from pg_stat_all_tables where schemaname = $1 and relname = $2",
+		t.cfg.PgTableName.SchemaName,
+		t.cfg.PgTableName.TableName).Scan(&rows)
 	if err != nil || !rows.Valid {
 		return 0, err
 	}
