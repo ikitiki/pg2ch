@@ -146,7 +146,7 @@ func (r *Replicator) initAndSyncTables() error {
 		}
 
 		if _, ok := r.tableLSN[tblName]; !ok {
-			lsn, err = r.pgCreateTempRepSlot(tx) // create temp repl slot must the first command in the tx
+			lsn, err = r.pgCreateTempRepSlot(tx, tblName) // create temp repl slot must the first command in the tx
 			if err != nil {
 				return fmt.Errorf("could not create temporary replication slot: %v", err)
 			}
@@ -534,14 +534,14 @@ func (r *Replicator) pgDropRepSlot(tx *pgx.Tx) error {
 	return err
 }
 
-func (r *Replicator) pgCreateTempRepSlot(tx *pgx.Tx) (utils.LSN, error) {
+func (r *Replicator) pgCreateTempRepSlot(tx *pgx.Tx, tblName config.PgTableName) (utils.LSN, error) {
 	var (
 		basebackupLSN, snapshotName, plugin sql.NullString
 		lsn                                 utils.LSN
 	)
 
 	row := tx.QueryRow(fmt.Sprintf("CREATE_REPLICATION_SLOT %s TEMPORARY LOGICAL %s USE_SNAPSHOT",
-		fmt.Sprintf("clickhouse_tempslot_%d", r.pgConn.PID()), utils.OutputPlugin))
+		fmt.Sprintf("clickhouse_tempslot_%s_%s", tblName.SchemaName, tblName.TableName), utils.OutputPlugin))
 
 	if err := row.Scan(&r.tempSlotName, &basebackupLSN, &snapshotName, &plugin); err != nil {
 		return utils.InvalidLSN, fmt.Errorf("could not scan: %v", err)
