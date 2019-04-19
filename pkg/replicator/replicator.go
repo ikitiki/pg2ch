@@ -653,6 +653,7 @@ func (r *Replicator) HandleMessage(msg message.Message, lsn utils.LSN) error {
 		}
 		r.inTxTables = make(map[config.PgTableName]struct{})
 	case message.Relation:
+		msgsInTx++
 		log.Printf("relation message received: %s", msg.String())
 		tblName, tbl := r.getTable(v.OID)
 		if tbl == nil || r.skipTableMessage(tblName) {
@@ -661,6 +662,7 @@ func (r *Replicator) HandleMessage(msg message.Message, lsn utils.LSN) error {
 
 		tbl.SetTupleColumns(v.Columns)
 	case message.Insert:
+		msgsInTx++
 		tblName, tbl := r.getTable(v.RelationOID)
 		if tbl == nil || r.skipTableMessage(tblName) {
 			break
@@ -672,6 +674,7 @@ func (r *Replicator) HandleMessage(msg message.Message, lsn utils.LSN) error {
 			r.curTxMergeIsNeeded = r.curTxMergeIsNeeded || mergeIsNeeded
 		}
 	case message.Update:
+		msgsInTx++
 		tblName, tbl := r.getTable(v.RelationOID)
 		if tbl == nil || r.skipTableMessage(tblName) {
 			break
@@ -683,6 +686,7 @@ func (r *Replicator) HandleMessage(msg message.Message, lsn utils.LSN) error {
 			r.curTxMergeIsNeeded = r.curTxMergeIsNeeded || mergeIsNeeded
 		}
 	case message.Delete:
+		msgsInTx++
 		tblName, tbl := r.getTable(v.RelationOID)
 		if tbl == nil || r.skipTableMessage(tblName) {
 			break
@@ -694,6 +698,7 @@ func (r *Replicator) HandleMessage(msg message.Message, lsn utils.LSN) error {
 			r.curTxMergeIsNeeded = r.curTxMergeIsNeeded || mergeIsNeeded
 		}
 	case message.Truncate:
+		msgsInTx++
 		for _, oid := range v.RelationOIDs {
 			if tblName, tbl := r.getTable(oid); tbl == nil || r.skipTableMessage(tblName) {
 				continue
