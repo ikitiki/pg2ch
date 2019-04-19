@@ -58,6 +58,7 @@ type Replicator struct {
 	inTxTables         map[config.PgTableName]struct{} // tables inside running tx
 	curTxMergeIsNeeded bool                            // if tables in the current transaction are needed to be merged
 	stateFp            *os.File
+	msgsInTx           int
 }
 
 type state struct {
@@ -637,14 +638,13 @@ func (r *Replicator) HandleMessage(msg message.Message, lsn utils.LSN) error {
 	r.tablesToMergeMutex.Lock()
 	defer r.tablesToMergeMutex.Unlock()
 
-	msgsInTx := 0
 	switch v := msg.(type) {
 	case message.Begin:
 		r.finalLSN = v.FinalLSN
 		r.curTxMergeIsNeeded = false
-		msgsInTx = 0
+		r.msgsInTx = 0
 	case message.Commit:
-		log.Printf("messages in the tx: %v", msgsInTx)
+		log.Printf("messages in the tx: %v", r.msgsInTx)
 		if r.curTxMergeIsNeeded {
 			log.Printf("merge due to commit")
 			if err := r.mergeTables(); err != nil {
@@ -653,7 +653,7 @@ func (r *Replicator) HandleMessage(msg message.Message, lsn utils.LSN) error {
 		}
 		r.inTxTables = make(map[config.PgTableName]struct{})
 	case message.Relation:
-		msgsInTx++
+		r.msgsInTx++
 		log.Printf("relation message received: %s", msg.String())
 		tblName, tbl := r.getTable(v.OID)
 		if tbl == nil || r.skipTableMessage(tblName) {
@@ -662,7 +662,7 @@ func (r *Replicator) HandleMessage(msg message.Message, lsn utils.LSN) error {
 
 		tbl.SetTupleColumns(v.Columns)
 	case message.Insert:
-		msgsInTx++
+		r.msgsInTx++
 		tblName, tbl := r.getTable(v.RelationOID)
 		if tbl == nil || r.skipTableMessage(tblName) {
 			break
@@ -674,7 +674,7 @@ func (r *Replicator) HandleMessage(msg message.Message, lsn utils.LSN) error {
 			r.curTxMergeIsNeeded = r.curTxMergeIsNeeded || mergeIsNeeded
 		}
 	case message.Update:
-		msgsInTx++
+		r.msgsInTx++
 		tblName, tbl := r.getTable(v.RelationOID)
 		if tbl == nil || r.skipTableMessage(tblName) {
 			break
@@ -686,7 +686,7 @@ func (r *Replicator) HandleMessage(msg message.Message, lsn utils.LSN) error {
 			r.curTxMergeIsNeeded = r.curTxMergeIsNeeded || mergeIsNeeded
 		}
 	case message.Delete:
-		msgsInTx++
+		r.msgsInTx++
 		tblName, tbl := r.getTable(v.RelationOID)
 		if tbl == nil || r.skipTableMessage(tblName) {
 			break
@@ -698,7 +698,7 @@ func (r *Replicator) HandleMessage(msg message.Message, lsn utils.LSN) error {
 			r.curTxMergeIsNeeded = r.curTxMergeIsNeeded || mergeIsNeeded
 		}
 	case message.Truncate:
-		msgsInTx++
+		r.msgsInTx++
 		for _, oid := range v.RelationOIDs {
 			if tblName, tbl := r.getTable(oid); tbl == nil || r.skipTableMessage(tblName) {
 				continue
