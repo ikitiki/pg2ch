@@ -423,6 +423,7 @@ func (r *Replicator) inactivityMerge() {
 			return
 		case <-ticker.C:
 			r.tablesToMergeMutex.Lock()
+			log.Printf("inactivity merge")
 			if err := r.mergeTables(); err != nil {
 				select {
 				case r.errCh <- fmt.Errorf("could not backgound merge tables: %v", err):
@@ -636,18 +637,23 @@ func (r *Replicator) HandleMessage(msg message.Message, lsn utils.LSN) error {
 	r.tablesToMergeMutex.Lock()
 	defer r.tablesToMergeMutex.Unlock()
 
+	msgsInTx := 0
 	switch v := msg.(type) {
 	case message.Begin:
 		r.finalLSN = v.FinalLSN
 		r.curTxMergeIsNeeded = false
+		msgsInTx = 0
 	case message.Commit:
+		log.Printf("messages in the tx: %v", msgsInTx)
 		if r.curTxMergeIsNeeded {
+			log.Printf("merge due to commit")
 			if err := r.mergeTables(); err != nil {
 				return fmt.Errorf("could not merge tables: %v", err)
 			}
 		}
 		r.inTxTables = make(map[config.PgTableName]struct{})
 	case message.Relation:
+		log.Printf("relation message received: %s", msg.String())
 		tblName, tbl := r.getTable(v.OID)
 		if tbl == nil || r.skipTableMessage(tblName) {
 			break
