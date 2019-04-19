@@ -624,6 +624,7 @@ func (r *Replicator) mergeTables() error {
 
 		delete(r.tablesToMerge, tblName)
 		r.tableLSN[tblName] = r.finalLSN
+		log.Printf("merge: %s -> %v", tblName.String(), r.finalLSN)
 	}
 	r.advanceLSN()
 
