@@ -1,11 +1,12 @@
 package tableinfo
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
 
-	"github.com/jackc/pgx"
+	"github.com/jackc/pgx/v4"
 
 	"github.com/mkabilov/pg2ch/pkg/config"
 	"github.com/mkabilov/pg2ch/pkg/message"
@@ -13,11 +14,11 @@ import (
 )
 
 // TablePgColumns returns postgresql table's columns structure
-func TablePgColumns(tx *pgx.Tx, tblName config.PgTableName) ([]message.Column, map[string]config.PgColumn, error) {
+func TablePgColumns(ctx context.Context, tx *pgx.Tx, tblName config.PgTableName) ([]message.Column, map[string]config.PgColumn, error) {
 	columns := make([]message.Column, 0)
 	pgColumns := make(map[string]config.PgColumn)
 
-	rows, err := tx.Query(`select
+	rows, err := (*tx).Query(ctx, `select
   a.attname,
   not a.attnotnull,
   a.atttypid::regtype::text,

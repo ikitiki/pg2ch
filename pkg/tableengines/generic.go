@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/jackc/pgx"
+	"github.com/jackc/pgx/v4"
 
 	"github.com/mkabilov/pg2ch/pkg/config"
 	"github.com/mkabilov/pg2ch/pkg/message"
@@ -154,7 +154,7 @@ func (t *genericTable) begin() (err error) {
 
 func (t *genericTable) pgStatLiveTuples(pgTx *pgx.Tx) (int64, error) {
 	var rows sql.NullInt64
-	err := pgTx.QueryRow("select n_live_tup from pg_stat_all_tables where schemaname = $1 and relname = $2",
+	err := (*pgTx).QueryRow(t.ctx, "select n_live_tup from pg_stat_all_tables where schemaname = $1 and relname = $2",
 		t.cfg.PgTableName.SchemaName,
 		t.cfg.PgTableName.TableName).Scan(&rows)
 	if err != nil || !rows.Valid {
@@ -199,7 +199,8 @@ func (t *genericTable) genSync(pgTx *pgx.Tx, w io.Writer) error {
 	}
 
 	query := fmt.Sprintf("copy %s(%s) to stdout", t.cfg.PgTableName.String(), strings.Join(t.pgUsedColumns, ", "))
-	if _, err := pgTx.CopyToWriter(w, query); err != nil {
+	conn := (*pgTx).Conn().PgConn()
+	if _, err := conn.CopyTo(t.ctx, w, query); err != nil {
 		return fmt.Errorf("could not copy: %v", err)
 	}
 

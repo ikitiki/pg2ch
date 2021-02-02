@@ -13,8 +13,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/jackc/pgx"
-	"github.com/kshvakov/clickhouse"
+	"github.com/jackc/pgx/v4"
+	"github.com/ClickHouse/clickhouse-go"
 	"github.com/peterbourgon/diskv"
 
 	"github.com/mkabilov/pg2ch/pkg/config"
@@ -111,7 +111,7 @@ func (r *Replicator) newTable(tblName config.PgTableName, tblConfig config.Table
 func (r *Replicator) checkPgSlotAndPub(tx *pgx.Tx) error {
 	var slotExists, pubExists bool
 
-	err := tx.QueryRow("select "+
+	err := (*tx).QueryRow(r.ctx, "select "+
 		"exists(select 1 from pg_replication_slots where slot_name = $1) as slot_exists, "+
 		"exists(select 1 from pg_publication where pubname = $2) as pub_exists",
 		r.cfg.Postgres.ReplicationSlotName, r.cfg.Postgres.PublicationName).Scan(&slotExists, &pubExists)
@@ -177,7 +177,7 @@ func (r *Replicator) initAndSyncTables() error {
 		r.chTables[tblName] = tbl
 
 		if _, ok := r.tableLSN[tblName]; ok {
-			if err := tx.Commit(); err != nil {
+			if err := (*tx).Commit(r.ctx); err != nil {
 				return err
 			}
 
@@ -197,7 +197,7 @@ func (r *Replicator) initAndSyncTables() error {
 			return fmt.Errorf("could not drop replication slot: %v", err)
 		}
 
-		if err := tx.Commit(); err != nil {
+		if err := (*tx).Commit(r.ctx); err != nil {
 			return err
 		}
 	}
@@ -207,18 +207,18 @@ func (r *Replicator) initAndSyncTables() error {
 }
 
 func (r *Replicator) pgBegin() (*pgx.Tx, error) {
-	tx, err := r.pgConn.BeginEx(r.ctx, &pgx.TxOptions{
+	tx, err := r.pgConn.BeginTx(r.ctx, pgx.TxOptions{
 		IsoLevel:   pgx.RepeatableRead,
 		AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return nil, fmt.Errorf("could not start pg transaction: %v", err)
 	}
 
-	return tx, nil
+	return &tx, nil
 }
 
 func (r *Replicator) pgCommit(tx *pgx.Tx) error {
-	return tx.Commit()
+	return (*tx).Commit(r.ctx)
 }
 
 func (r *Replicator) readPersStorage() error {
@@ -389,7 +389,8 @@ func (r *Replicator) Run() error {
 	}
 
 	r.finalLSN = r.minLSN()
-	r.consumer = consumer.New(r.ctx, r.errCh, r.cfg.Postgres.ConnConfig,
+	// I want pgx.ConnConfig -> pconn.Config
+	r.consumer = consumer.New(r.ctx, r.errCh, r.cfg.PostgresConfig().Config,
 		r.cfg.Postgres.ReplicationSlotName, r.cfg.Postgres.PublicationName, r.finalLSN)
 
 	if err := r.consumer.Run(r); err != nil {
@@ -462,7 +463,7 @@ func (r *Replicator) logErrCh() {
 }
 
 func (r *Replicator) fetchPgTablesInfo(tx *pgx.Tx) error {
-	rows, err := tx.Query(`
+	rows, err := (*tx).Query(r.ctx, `
 			select c.oid,
 				   n.nspname,
 				   c.relname,
@@ -528,30 +529,32 @@ func (r *Replicator) chDisconnect() {
 func (r *Replicator) pgConnect() error {
 	var err error
 
-	r.pgConn, err = pgx.Connect(r.cfg.Postgres.Merge(pgx.ConnConfig{
-		RuntimeParams:        map[string]string{"replication": "database", "application_name": applicationName},
-		PreferSimpleProtocol: true}))
+	pgConnConfig := r.cfg.PostgresConfig()
+	pgConnConfig.RuntimeParams = map[string]string{"replication": "database", "application_name": applicationName}
+	pgConnConfig.PreferSimpleProtocol = true
+
+	r.pgConn, err = pgx.ConnectConfig(r.ctx, pgConnConfig)
+
 	if err != nil {
 		return fmt.Errorf("could not rep connect to pg: %v", err)
 	}
 
-	connInfo, err := initPostgresql(r.pgConn)
+	err = initPostgresql(r.ctx, r.pgConn)
 	if err != nil {
 		return fmt.Errorf("could not fetch conn info: %v", err)
 	}
-	r.pgConn.ConnInfo = connInfo
 
 	return nil
 }
 
 func (r *Replicator) pgDisconnect() {
-	if err := r.pgConn.Close(); err != nil {
+	if err := r.pgConn.Close(r.ctx); err != nil {
 		log.Printf("could not close connection to postgresql: %v", err)
 	}
 }
 
 func (r *Replicator) pgDropRepSlot(tx *pgx.Tx) error {
-	_, err := tx.Exec(fmt.Sprintf("DROP_REPLICATION_SLOT %s", r.tempSlotName))
+	_, err := (*tx).Exec(r.ctx, fmt.Sprintf("DROP_REPLICATION_SLOT %s", r.tempSlotName))
 
 	return err
 }
@@ -562,7 +565,7 @@ func (r *Replicator) pgCreateTempRepSlot(tx *pgx.Tx, tblName config.PgTableName)
 		lsn                               utils.LSN
 	)
 
-	row := tx.QueryRow(fmt.Sprintf("CREATE_REPLICATION_SLOT %s TEMPORARY LOGICAL %s USE_SNAPSHOT",
+	row := (*tx).QueryRow(r.ctx, fmt.Sprintf("CREATE_REPLICATION_SLOT %s TEMPORARY LOGICAL %s USE_SNAPSHOT",
 		fmt.Sprintf("ch_tmp_%s_%s", tblName.SchemaName, tblName.TableName), utils.OutputPlugin))
 
 	if err := row.Scan(&r.tempSlotName, &snapshotLSN, &snapshotName, &plugin); err != nil {
@@ -753,7 +756,7 @@ func (r *Replicator) fetchTableConfig(tx *pgx.Tx, tblName config.PgTableName) (c
 	var err error
 	cfg := r.cfg.Tables[tblName]
 
-	cfg.TupleColumns, cfg.PgColumns, err = tableinfo.TablePgColumns(tx, tblName)
+	cfg.TupleColumns, cfg.PgColumns, err = tableinfo.TablePgColumns(r.ctx, tx, tblName)
 	if err != nil {
 		return cfg, fmt.Errorf("could not get columns for %s postgres table: %v", tblName.String(), err)
 	}

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jackc/pgx"
+	"github.com/jackc/pgx/v4"
 	"gopkg.in/yaml.v2"
 
 	"github.com/mkabilov/pg2ch/pkg/message"
@@ -48,8 +48,8 @@ var tableEngines = map[tableEngine]string{
 }
 
 type pgConnConfig struct {
-	pgx.ConnConfig `yaml:",inline"`
-
+	config             *pgx.ConnConfig
+	UrlOrDsnConnstring  string `yaml:"url_or_dsn_connstring"`
 	ReplicationSlotName string `yaml:"replication_slot_name"`
 	PublicationName     string `yaml:"publication_name"`
 }
@@ -214,23 +214,14 @@ func New(filepath string) (*Config, error) {
 		return nil, fmt.Errorf("replication slot name is not specified")
 	}
 
-	connCfg, err := pgx.ParseEnvLibpq()
+	connConfig, err := pgx.ParseConfig(cfg.Postgres.UrlOrDsnConnstring)
 	if err != nil {
-		return nil, fmt.Errorf("could not parse lib pq env variabels: %v", err)
+		return nil, fmt.Errorf("could not parse lib pq env variabels or supplied conn string: %v", err)
 	}
+	cfg.Postgres.config = connConfig
 
 	if cfg.InactivityFlushTimeout.Seconds() == 0 {
 		cfg.InactivityFlushTimeout = defaultInactivityMergeTimeout
-	}
-
-	cfg.Postgres.ConnConfig = cfg.Postgres.ConnConfig.Merge(connCfg)
-
-	if cfg.Postgres.Port == 0 {
-		cfg.Postgres.Port = defaultPostgresPort
-	}
-
-	if cfg.Postgres.Host == "" {
-		cfg.Postgres.Host = defaultPostgresHost
 	}
 
 	if cfg.ClickHouse.Port == 0 {
@@ -295,4 +286,8 @@ func (c *chConnConfig) ConnectionString() string {
 	}
 
 	return fmt.Sprintf("tcp://%s:%d?%s", c.Host, c.Port, connStr.Encode())
+}
+
+func (c *Config) PostgresConfig() *(pgx.ConnConfig) {
+	return c.Postgres.config
 }

@@ -1,11 +1,12 @@
 package replicator
 
 import (
-	"github.com/jackc/pgx"
-	"github.com/jackc/pgx/pgtype"
+	"context"
+	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgtype"
 )
 
-func initPostgresql(conn *pgx.Conn) (*pgtype.ConnInfo, error) {
+func initPostgresql(ctx context.Context, conn *pgx.Conn) (error) {
 	const (
 		namedOIDQuery = `select t.oid,
 	case when nsp.nspname in ('pg_catalog', 'public') then t.typname
@@ -20,24 +21,29 @@ where (
 	)`
 	)
 
-	nameOIDs, err := connInfoFromRows(conn.Query(namedOIDQuery))
+	rows, err := conn.Query(ctx, namedOIDQuery)
 	if err != nil {
-		return nil, err
+		return err
+	}
+
+	nameOIDs, err := connInfoFromRows(&rows)
+	if err != nil {
+		return err
 	}
 
 	cinfo := pgtype.NewConnInfo()
-	cinfo.InitializeDataTypes(nameOIDs)
+	conn.ConnInfo().InitializeDataTypes(nameOIDs)
 
-	if err = initConnInfoEnumArray(conn, cinfo); err != nil {
-		return nil, err
+	if err = initConnInfoEnumArray(ctx, conn, cinfo); err != nil {
+		return err
 	}
 
-	return cinfo, nil
+	return nil
 }
 
-func initConnInfoEnumArray(conn *pgx.Conn, cinfo *pgtype.ConnInfo) error {
-	nameOIDs := make(map[string]pgtype.OID, 16)
-	rows, err := conn.Query(`select t.oid, t.typname
+func initConnInfoEnumArray(ctx context.Context, conn *pgx.Conn, cinfo *pgtype.ConnInfo) error {
+	nameOIDs := make(map[string]uint32, 16)
+	rows, err := conn.Query(ctx, `select t.oid, t.typname
 from pg_type t
   join pg_type base_type on t.typelem=base_type.oid
 where t.typtype = 'b'
@@ -47,7 +53,7 @@ where t.typtype = 'b'
 	}
 
 	for rows.Next() {
-		var oid pgtype.OID
+		var oid uint32
 		var name pgtype.Text
 		if err := rows.Scan(&oid, &name); err != nil {
 			return err
@@ -71,26 +77,23 @@ where t.typtype = 'b'
 	return nil
 }
 
-func connInfoFromRows(rows *pgx.Rows, err error) (map[string]pgtype.OID, error) {
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
+func connInfoFromRows(rows *pgx.Rows) (map[string]uint32, error) {
+	defer (*rows).Close()
 
-	nameOIDs := make(map[string]pgtype.OID, 256)
-	for rows.Next() {
-		var oid pgtype.OID
+	nameOIDs := make(map[string]uint32, 256)
+	for (*rows).Next() {
+		var oid uint32
 		var name pgtype.Text
-		if err = rows.Scan(&oid, &name); err != nil {
+		if err := (*rows).Scan(&oid, &name); err != nil {
 			return nil, err
 		}
 
 		nameOIDs[name.String] = oid
 	}
 
-	if err = rows.Err(); err != nil {
+	if err := (*rows).Err(); err != nil {
 		return nil, err
 	}
 
-	return nameOIDs, err
+	return nameOIDs, nil
 }

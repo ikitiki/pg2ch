@@ -30,7 +30,7 @@ func (r *Replicator) GenerateChDDL() error {
 
 		tblCfg := r.cfg.Tables[tblName]
 
-		tblCfg.TupleColumns, tblCfg.PgColumns, err = tableinfo.TablePgColumns(tx, tblName)
+		tblCfg.TupleColumns, tblCfg.PgColumns, err = tableinfo.TablePgColumns(r.ctx, tx, tblName)
 		if err != nil {
 			return fmt.Errorf("could not get columns for %s postgres table: %v", tblName.String(), err)
 		}

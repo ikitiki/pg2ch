@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jackc/pgx"
-	"github.com/jackc/pgx/pgtype"
+	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgtype"
 
 	"github.com/mkabilov/pg2ch/pkg/utils"
 )

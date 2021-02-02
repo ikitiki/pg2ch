@@ -3,7 +3,7 @@ package utils
 import (
 	"fmt"
 
-	"github.com/jackc/pgx"
+	"github.com/jackc/pglogrepl"
 )
 
 type LSN uint64
@@ -18,7 +18,7 @@ func (l LSN) Hex() string {
 }
 
 func (l LSN) String() string {
-	return pgx.FormatLSN(uint64(l))
+	return pglogrepl.LSN(l).String()
 }
 
 func (l *LSN) ParseHex(hexStr string) error {
@@ -36,7 +36,7 @@ func (l *LSN) ParseHex(hexStr string) error {
 }
 
 func (l *LSN) Parse(lsn string) error {
-	tmp, err := pgx.ParseLSN(lsn)
+	tmp, err := pglogrepl.ParseLSN(lsn)
 	if err != nil {
 		return err
 

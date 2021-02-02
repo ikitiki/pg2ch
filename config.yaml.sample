@@ -14,10 +14,7 @@ clickhouse:
         debug: false
 
 postgres:
-    host: localhost
-    port: 5432
-    database: pg2ch
-    user: postgres
+    url_or_dsn_connstring: "host=localhost port=5432 dbname=pg2ch user=postgres"
     replication_slot_name: my_slot
     publication_name: my_pub
 
